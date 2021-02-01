@@ -234,7 +234,7 @@ EFI_STATUS efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SysTab) {
     val |= (val << 32);
     wrmsr(MSR_TURBO_RATIO_LIMIT, val);
     wrmsr(MSR_TURBO_RATIO_LIMIT1, val);
-    wrmsr(MSR_TURBO_RATIO_LIMIT1, val | MSR_TURBO_RATIO_SEMAPHORE_BIT);
+    wrmsr(MSR_TURBO_RATIO_LIMIT2, val | MSR_TURBO_RATIO_SEMAPHORE_BIT);
     if ( rsp ){
       Print(L"FAIL: Could not set core voltage");
     }
