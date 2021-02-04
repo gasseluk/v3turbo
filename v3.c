@@ -5,22 +5,14 @@
 // Core Options
 #define CoreVOffset   -70 /* mV */
 #define CoreVStatic   0   /* mV */
-#define CoreMulti     0          
-#define CoreFixed     0          
-
-#define CoreAdjVOffset (((CoreVOffset << 15)/1000) & 0x0ffe0)
-#define CoreAdjVStatic (((CoreVStatic << 18)/1000) & 0xfff00)
-#define CoreVoltage    (((CoreAdjVOffset << 16) | CoreAdjVStatic) | CoreMulti | (CoreFixed << 20))
+#define CoreMulti     0
+#define CoreFixed     0
 
 // Cache Options
 #define CacheVOffset  -50
 #define CacheVStatic  0
 #define CacheMulti    0
 #define CacheFixed    0
-
-#define CacheAdjVOffset (((CacheVOffset << 15)/1000) & 0x0ffe0)
-#define CacheAdjVStatic (((CacheVStatic << 18)/1000) & 0x0fff00)
-#define CacheVoltage    (((CacheAdjVOffset << 16) | CacheAdjVStatic) | CacheMulti | (CacheFixed << 20))
 
 
 
@@ -91,9 +83,18 @@ static inline void wrmsr(UINT32 msr, UINT64 value)
 #define        MSR_FLEX_RATIO_OC_LOCK_BIT     (1<<20)      // bit 20, set to lock MSR 0x194
 #define        MSR_TURBO_RATIO_SEMAPHORE_BIT  0x8000000000000000    // set to execute changes writen to MSR 0x1AD, 0x1AE, 0x1AF
 
+// Some macros for OC MB voltage calculation
+#define AdjVOffset(V) ((unsigned)((V << 15)/1000) & 0x000000000000ffe0)
+#define AdjVStatic(V) ((unsigned)((V << 18)/1000) & 0x00000000000fff00)
+
+#define CoreVoltage    (((AdjVOffset(CoreVOffset) << 16) | AdjVStatic(CoreVStatic)) | CoreMulti | (CoreFixed << 20))
+#define CacheVoltage   (((AdjVOffset(CacheVOffset) << 16) | AdjVStatic(CacheVStatic)) | CacheMulti | (CacheFixed << 20))
+
+
+
 // Shortcut to execute a OC mailbox command using return value RET
-#define       OC_MB_CMD(CMD, DOMAIN, RET) \
-  wrmsr(MSR_OC_MAILBOX, OC_MB_COMMAND_EXEC | CMD | DOMAIN);\
+#define OC_MB_CMD(CMD, DOMAIN, RET) \
+  wrmsr(MSR_OC_MAILBOX, OC_MB_COMMAND_EXEC | (CMD) | (DOMAIN));\
   RET = rdmsr(MSR_OC_MAILBOX);
 
 // Check error rdmsr(OC_MB) result
@@ -124,56 +125,34 @@ EFI_STATUS efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SysTab) {
   __cpuid(CPUID_VERSION_INFO, cpuid[0], cpuid[1], cpuid[2], cpuid[3]);
 
   if ( cpuid[0] != CPUID_SIGNATURE ){
-    Print(L"FAIL: Cpuid mismatch, found 0x%X\n", cpuid);
+    Print(L"FAIL: Cpuid mismatch, found 0x%X\r\n", cpuid);
     goto exit;
   }
 
   // Check MicroCode
   UINT64 rsp = rdmsr(MSR_IA32_BIOS_SIGN_ID);
   if ( rsp >> 0x20 ){
-    Print(L"FAIL: Micro code present...\n");
+    Print(L"FAIL: Micro code present...\r\n");
     goto exit;
   }
 
   // check OC Lock Bit not set
   rsp = rdmsr(MSR_FLEX_RATIO);
   if ( rsp & MSR_FLEX_RATIO_OC_LOCK_BIT ){
-    Print(L"FAIL: OC locked...\n");
+    Print(L"FAIL: OC locked...\r\n");
     goto exit;
   }
 
   // Get Core OC ratio and caps
   OC_MB_CMD(OC_MB_GET_CPU_CAPS, OC_MB_DOMAIN_IACORE, caps.core)
   if ( OC_MB_ERROR(caps.core) ){
-    Print(L"FAIL: Core OC caps read failed");
+    Print(L"FAIL: Core OC caps read failed\r\n");
   }
 
   // Get Cache OC ratio and caps
   OC_MB_CMD(OC_MB_GET_CPU_CAPS, OC_MB_DOMAIN_CLR, caps.cache)
   if ( OC_MB_ERROR(caps.cache) ){
-    Print(L"FAIL: Cache OC caps read failed");
-  }
-
-  // Set Core voltage
-  {
-    UINT64 val = CoreVoltage & ~0xffULL;
-    val |= caps.core & 0xff;
-    val |= OC_MB_SET_FVIDS_RATIOS;
-    OC_MB_CMD(val, OC_MB_DOMAIN_IACORE, rsp);
-    if ( rsp ){
-      Print(L"FAIL: Could not set core voltage");
-    }
-  }
-
-  // Set Cache voltage
-  {
-    UINT64 val = CacheVoltage & ~0xffULL;
-    val |= caps.cache & 0xff;
-    val |= OC_MB_SET_FVIDS_RATIOS;
-    OC_MB_CMD(val, OC_MB_DOMAIN_IACORE, rsp);
-    if ( rsp ){
-      Print(L"FAIL: Could not set core voltage");
-    }
+    Print(L"FAIL: Cache OC caps read failed\r\n");
   }
 
   // Set Turbo Ratios
@@ -190,11 +169,36 @@ EFI_STATUS efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SysTab) {
   {
     UINT16 limit = caps.cache & 0x00ff;
     UINT64 val = rdmsr(MSR_UNCORE_RATIO_LIMIT);
+    val &= 0xffffffffffff0000;
     val |= limit | (limit << 8);
     wrmsr(MSR_UNCORE_RATIO_LIMIT, val);
   }
 
+  // Set Core voltage
+  {
+    UINT64 val = CoreVoltage
+      | (caps.core & 0xff)
+      | OC_MB_SET_FVIDS_RATIOS;
+    OC_MB_CMD(val, OC_MB_DOMAIN_IACORE, rsp)
+    if ( rsp ){
+      Print(L"FAIL: Could not set core voltage\r\n");
+    }
+  }
+
+  // Set Cache voltage
+  {
+    UINT64 val = CacheVoltage
+      | (caps.cache & 0xff)
+      | OC_MB_SET_FVIDS_RATIOS;
+    OC_MB_CMD(val, OC_MB_DOMAIN_CLR, rsp)
+    if ( rsp ){
+      Print(L"FAIL: Could not set core voltage\r\n");
+    }
+  }
+
   // Lock MSR_FLEX_RATIO using the FLEX_RATIO_LOCK bit
+  // This is needed to lock down our settings, otherwise
+  // they would be corrected by the microcode update in the OS
   {
     UINT64 val = rdmsr(MSR_FLEX_RATIO);
     val |= MSR_FLEX_RATIO_OC_LOCK_BIT;
