@@ -180,7 +180,7 @@ EFI_STATUS efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SysTab) {
       | (caps.core & 0xff)
       | OC_MB_SET_FVIDS_RATIOS;
     OC_MB_CMD(val, OC_MB_DOMAIN_IACORE, rsp)
-    if ( rsp ){
+    if ( OC_MB_ERROR(rsp) ){
       Print(L"FAIL: Could not set core voltage\r\n");
     }
   }
@@ -191,8 +191,8 @@ EFI_STATUS efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SysTab) {
       | (caps.cache & 0xff)
       | OC_MB_SET_FVIDS_RATIOS;
     OC_MB_CMD(val, OC_MB_DOMAIN_CLR, rsp)
-    if ( rsp ){
-      Print(L"FAIL: Could not set core voltage\r\n");
+    if ( OC_MB_ERROR(rsp) ){
+      Print(L"FAIL: Could not set cache voltage\r\n");
     }
   }
 
