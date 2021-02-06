@@ -78,10 +78,11 @@ static inline void wrmsr(UINT32 msr, UINT64 value)
 #define        MSR_UNCORE_RATIO_LIMIT     0x620
 
 // Some Constants
-#define        CPUID_SIGNATURE                0x306F2        // target CPUID, set 0xFFFFFFFF to bypass checking
-#define        CPUID_VERSION_INFO             0x1
-#define        MSR_FLEX_RATIO_OC_LOCK_BIT     (1<<20)      // bit 20, set to lock MSR 0x194
-#define        MSR_TURBO_RATIO_SEMAPHORE_BIT  0x8000000000000000    // set to execute changes writen to MSR 0x1AD, 0x1AE, 0x1AF
+#define        CPUID_SIGNATURE                    0x306F2               // target CPUID, set 0xFFFFFFFF to bypass checking
+#define        CPUID_VERSION_INFO                 0x1
+#define        MSR_FLEX_RATIO_OC_LOCK_BIT         (1<<20)               // bit 20, set to lock MSR 0x194
+#define        MSR_TURBO_RATIO_SEMAPHORE_BIT      0x8000000000000000    // set to execute changes writen to MSR 0x1AD, 0x1AE, 0x1AF
+#define        OC_MB_FIVR_DYN_SVID_CONTROL_DIS    0x80000000			      // bit 31
 
 // Some macros for OC MB voltage calculation
 #define AdjVOffset(V) ((unsigned)((V << 15)/1000) & 0x000000000000ffe0)
@@ -193,6 +194,16 @@ EFI_STATUS efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SysTab) {
     OC_MB_CMD(val, OC_MB_DOMAIN_CLR, rsp)
     if ( OC_MB_ERROR(rsp) ){
       Print(L"FAIL: Could not set cache voltage\r\n");
+    }
+  }
+
+  // PowerCut
+  {
+    UINT64 val = OC_MB_SET_SVID_PARAMS 
+      | OC_MB_FIVR_DYN_SVID_CONTROL_DIS;
+    OC_MB_CMD(val, OC_MB_DOMAIN_IACORE, rsp)
+    if ( OC_MB_ERROR(rsp) ){
+      Print(L"FAIL: Could not apply PowerCut\r\n");
     }
   }
 
